@@ -5,63 +5,63 @@ on:
   push:
     branches:
       - main
-    paths:
-      - "XiaoLiao-Android.zip"
-      - ".github/workflows/build-apk.yml"
 
 permissions:
   contents: read
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
 
-      - name: Extract Android project
+      - name: Extract project
         run: |
-          mkdir -p extracted
+          rm -rf extracted
+          mkdir extracted
           unzip -q XiaoLiao-Android.zip -d extracted
           echo "=== ZIP contents ==="
-          find extracted -maxdepth 3 -type f | sort | head -100
+          find extracted -maxdepth 4 -type f | sort
 
-      - name: Find project root
+      - name: Find Android project
         shell: bash
         run: |
-          GRADLEW=$(find extracted -type f -name gradlew | head -1)
+          SETTINGS=$(find extracted \
+            \( -name "settings.gradle.kts" -o -name "settings.gradle" \) \
+            -type f | head -1)
 
-          if [ -z "$GRADLEW" ]; then
-            echo "ERROR: gradlew not found inside ZIP"
+          if [ -z "$SETTINGS" ]; then
+            echo "ERROR: settings.gradle(.kts) not found"
             exit 1
           fi
 
-          PROJECT_DIR=$(dirname "$GRADLEW")
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Android project: $PROJECT_DIR"
+          PROJECT_DIR=$(dirname "$SETTINGS")
 
-      - name: Make Gradle executable
-        run: chmod +x "$PROJECT_DIR/gradlew"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Found Android project: $PROJECT_DIR"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
 
-      - name: Build APK
+      - name: Build debug APK
         working-directory: ${{ env.PROJECT_DIR }}
-        run: ./gradlew :app:assembleDebug --stacktrace
+        run: gradle :app:assembleDebug --stacktrace
 
-      - name: Locate APK
+      - name: Find APK
         shell: bash
         run: |
-          APK=$(find "$PROJECT_DIR/app/build/outputs/apk" \
+          APK=$(find "$PROJECT_DIR/app/build/outputs/apk/debug" \
             -type f -name "*.apk" | head -1)
 
           if [ -z "$APK" ]; then
@@ -70,7 +70,7 @@ jobs:
           fi
 
           echo "APK_PATH=$APK" >> "$GITHUB_ENV"
-          echo "Generated: $APK"
+          echo "APK generated: $APK"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
